@@ -141,15 +141,22 @@ class VideoProcessor {
         reject(new Error('Не удалось загрузить видеофайл'));
       };
 
-      video.onloadedmetadata = async () => {
+      video.onloadedmetadata = () => {
         try {
           const duration = video.duration;
           const srcW = video.videoWidth;
           const srcH = video.videoHeight;
 
+          // Guard: invalid dimensions or duration
           if (!srcW || !srcH) {
             cleanup();
             reject(new Error('Не удалось определить размер видео'));
+            return;
+          }
+
+          if (!duration || duration <= 0 || !isFinite(duration)) {
+            cleanup();
+            reject(new Error('Видео слишком короткое'));
             return;
           }
 
@@ -187,7 +194,7 @@ class VideoProcessor {
           let stream;
           try {
             stream = outCanvas.captureStream(fps);
-          } catch(e) {
+          } catch (e) {
             cleanup();
             reject(new Error('Ваш браузер не поддерживает запись видео. Попробуйте Chrome.'));
             return;
@@ -203,64 +210,67 @@ class VideoProcessor {
 
           recorder.start(100);
 
-          const totalFrames = Math.floor(duration * fps);
+          const totalFrames = Math.max(1, Math.ceil(duration * fps));
           let processed = 0;
+          let lastDrawnTime = -Infinity;
 
-          // Process each frame via seeking
-          for (let frame = 0; frame < totalFrames; frame++) {
-            if (this.aborted) break;
-
-            const time = frame / fps;
-
-            // Seek
-            await new Promise((res, rej) => {
-              let seekTimer;
-              const clearSeekTimer = () => { clearTimeout(seekTimer); video.onseeked = null; video.onerror = null; };
-              seekTimer = setTimeout(() => {
-                clearSeekTimer();
-                rej(new Error('Не удалось получить кадр видео'));
-              }, 10000);
-              video.onseeked = () => { clearSeekTimer(); res(); };
-              video.onerror = (e) => { clearSeekTimer(); rej(e); };
-              video.currentTime = time;
-            });
-
-            // Draw current frame to source canvas
+          // Draw, enhance, and notify for a single frame (sync)
+          const drawFrame = () => {
             srcCtx.drawImage(video, 0, 0, drawW, drawH);
-
-            // Enhance
             const enhanced = this.enhance(srcCanvas, enhancement);
             outCtx.putImageData(enhanced, 0, 0);
-
-            // Notify preview
             if (onFrame) onFrame(outCanvas);
-
             processed++;
-            if (onProgress) onProgress((processed / totalFrames) * 100);
+            if (onProgress) onProgress(Math.min(100, (processed / totalFrames) * 100));
+          };
 
-            // Yield to browser
-            await new Promise(r => setTimeout(r, 0));
+          // Stop recorder, then resolve or reject
+          const finish = (success) => {
+            if (recorder.state === 'recording') recorder.stop();
+            if (!success) {
+              cleanup();
+              reject(new DOMException('Обработка отменена', 'AbortError'));
+              return;
+            }
+            done.then(result => { cleanup(); resolve(result); });
+          };
+
+          // Start real-time playback capture
+          video.play();
+
+          if (video.requestVideoFrameCallback) {
+            // Modern browsers: rVFC gives precise media-time timestamps
+            const tick = (_now, metadata) => {
+              if (this.aborted) { finish(false); return; }
+              const mediaTime = Math.min(metadata.mediaTime, duration);
+              if (mediaTime - lastDrawnTime >= 1000 / fps) {
+                drawFrame();
+                lastDrawnTime = mediaTime;
+              }
+              if (metadata.mediaTime >= duration || video.ended) {
+                finish(true);
+                return;
+              }
+              video.requestVideoFrameCallback(tick);
+            };
+            video.requestVideoFrameCallback(tick);
+          } else {
+            // Fallback: rAF + video.currentTime for throttled drawing
+            const tick = () => {
+              if (this.aborted) { finish(false); return; }
+              const ct = video.currentTime;
+              if (ct - lastDrawnTime >= 1000 / fps) {
+                drawFrame();
+                lastDrawnTime = ct;
+              }
+              if (video.ended || ct >= duration) {
+                finish(true);
+                return;
+              }
+              requestAnimationFrame(tick);
+            };
+            requestAnimationFrame(tick);
           }
-
-          if (this.aborted) {
-            recorder.stop();
-            cleanup();
-            reject(new DOMException('Обработка отменена', 'AbortError'));
-            return;
-          }
-
-          if (totalFrames === 0) {
-            recorder.stop();
-            cleanup();
-            reject(new Error('Видео слишком короткое'));
-            return;
-          }
-
-          recorder.stop();
-          const result = await done;
-
-          cleanup();
-          resolve(result);
 
         } catch (err) {
           cleanup();
