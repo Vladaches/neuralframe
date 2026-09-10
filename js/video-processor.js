@@ -4,256 +4,205 @@
 
 class VideoProcessor {
   constructor() {
-    this.canvas = document.getElementById('processingCanvas');
-    this.ctx = this.canvas.getContext('2d');
     this.isProcessing = false;
-    this.abortController = null;
+    this.aborted = false;
   }
 
-  /* ===================== UPSCALE 2x ===================== */
-  async upscale2x(frame) {
-    return await this.upscale(frame, 2);
-  }
-
-  /* ===================== UPSCALE 4x ===================== */
-  async upscale4x(frame) {
-    return await this.upscale(frame, 4);
-  }
-
-  /* ===================== UPSCALE (base) ===================== */
-  async upscale(frame, scale) {
-    const { width, height } = frame;
+  /* ===================== UPSCALE ===================== */
+  async upscale(canvas, scale) {
+    const { width, height } = canvas;
     const newWidth = width * scale;
     const newHeight = height * scale;
 
-    this.canvas.width = newWidth;
-    this.canvas.height = newHeight;
-
-    // Draw original to small canvas for sampling
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = width;
-    tempCanvas.height = height;
-    const tempCtx = tempCanvas.getContext('2d');
-    tempCtx.drawImage(frame, 0, 0);
-
-    const imageData = tempCtx.getImageData(0, 0, width, height);
-    const tensor = tf.browser.fromPixels(imageData, 3)
-      .toFloat()
-      .div(255.0)
-      .reshape([1, height, width, 3]);
-
-    // Simple upscale using bicubic-like upsampling via tf.image.resizeBilinear
-    const upscaled = tf.image.resizeBilinear(tensor, [newHeight, newWidth]);
-
-    // Apply sharpening kernel
-    const sharpened = this.sharpenTensor(upscaled);
-
-    // Convert back to image data
-    const output = sharpened.squeeze().mul(255).cast('int32');
-    const outputData = await output.data();
-
-    // Create RGBA ImageData
-    const outputImageData = this.ctx.createImageData(newWidth, newHeight);
-    for (let i = 0; i < outputData.length; i++) {
-      outputImageData.data[i * 4] = outputData[i * 3];
-      outputImageData.data[i * 4 + 1] = outputData[i * 3 + 1];
-      outputImageData.data[i * 4 + 2] = outputData[i * 3 + 2];
-      outputImageData.data[i * 4 + 3] = 255;
-    }
-
-    // Cleanup tensors
-    tf.dispose([tensor, upscaled, sharpened, output]);
-
-    return outputImageData;
-  }
-
-  /* ===================== DENOISE ===================== */
-  async denoise(frame) {
-    const { width, height } = frame;
-
-    this.canvas.width = width;
-    this.canvas.height = height;
-
-    const imageData = this.ctx.getImageData(0, 0, width, height);
-
-    const tensor = tf.browser.fromPixels(imageData, 3)
-      .toFloat()
-      .div(255.0)
-      .reshape([1, height, width, 3]);
-
-    // Apply Gaussian blur as denoising approximation
-    const blurred = this.gaussianBlur(tensor, 1.5);
-
-    // Blend: 70% blurred + 30% original (preserve some detail)
-    const blended = tf.add(
-      blurred.mul(0.7),
-      tensor.mul(0.3)
-    );
-
-    const output = blended.squeeze().mul(255).cast('int32');
-    const outputData = await output.data();
-
-    const outputImageData = this.ctx.createImageData(width, height);
-    for (let i = 0; i < outputData.length; i++) {
-      outputImageData.data[i * 4] = outputData[i * 3];
-      outputImageData.data[i * 4 + 1] = outputData[i * 3 + 1];
-      outputImageData.data[i * 4 + 2] = outputData[i * 3 + 2];
-      outputImageData.data[i * 4 + 3] = 255;
-    }
-
-    tf.dispose([tensor, blurred, blended, output]);
-
-    return outputImageData;
-  }
-
-  /* ===================== SHARPEN ===================== */
-  async sharpen(frame) {
-    const { width, height } = frame;
-
-    this.canvas.width = width;
-    this.canvas.height = height;
-
-    const imageData = this.ctx.getImageData(0, 0, width, height);
-
-    const tensor = tf.browser.fromPixels(imageData, 3)
-      .toFloat()
-      .div(255.0)
-      .reshape([1, height, width, 3]);
-
-    // Unsharp mask: original + (original - blurred) * amount
-    const blurred = this.gaussianBlur(tensor, 2.0);
-    const detail = tf.sub(tensor, blurred);
-    const sharpened = tf.add(tensor, detail.mul(1.5)).clipByValue(0, 1);
-
-    const output = sharpened.squeeze().mul(255).cast('int32');
-    const outputData = await output.data();
-
-    const outputImageData = this.ctx.createImageData(width, height);
-    for (let i = 0; i < outputData.length; i++) {
-      outputImageData.data[i * 4] = outputData[i * 3];
-      outputImageData.data[i * 4 + 1] = outputData[i * 3 + 1];
-      outputImageData.data[i * 4 + 2] = outputData[i * 3 + 2];
-      outputImageData.data[i * 4 + 3] = 255;
-    }
-
-    tf.dispose([tensor, blurred, detail, sharpened, output]);
-
-    return outputImageData;
-  }
-
-  /* ===================== HELPERS ===================== */
-  gaussianBlur(tensor, sigma) {
-    const kernelSize = Math.ceil(sigma * 3) * 2 + 1;
-    const kernel = this.createGaussianKernel(kernelSize, sigma);
-    const padding = Math.floor(kernelSize / 2);
+    const imageData = canvas.getContext('2d').getImageData(0, 0, width, height);
 
     return tf.tidy(() => {
-      const reshaped = tensor.transpose([0, 3, 1, 2]);
-      const conv = tf.conv2d(reshaped, kernel, 1, 'same');
-      return conv.transpose([0, 2, 3, 1]);
-    });
-  }
+      const tensor = tf.browser.fromPixels(imageData, 3)
+        .toFloat()
+        .div(255.0)
+        .reshape([1, height, width, 3]);
 
-  createGaussianKernel(size, sigma) {
-    const values = new Float32Array(size * size);
-    const center = Math.floor(size / 2);
-    let sum = 0;
+      const upscaled = tf.image.resizeBilinear(tensor, [newHeight, newWidth]);
 
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const dx = x - center;
-        const dy = y - center;
-        const value = Math.exp(-(dx * dx + dy * dy) / (2 * sigma * sigma));
-        values[y * size + x] = value;
-        sum += value;
-      }
-    }
-
-    // Normalize
-    for (let i = 0; i < values.length; i++) {
-      values[i] /= sum;
-    }
-
-    return tf.tensor4d(values, [size, size, 1, 1]);
-  }
-
-  sharpenTensor(tensor) {
-    return tf.tidy(() => {
+      // Sharpen after upscale
       const kernel = tf.tensor4d([
         [0, -1, 0],
         [-1, 5, -1],
         [0, -1, 0]
       ], [3, 3, 1, 1]);
 
-      const reshaped = tensor.transpose([0, 3, 1, 2]);
-      const conv = tf.conv2d(reshaped, kernel, 1, 'same');
-      return conv.transpose([0, 2, 3, 1]).clipByValue(0, 1);
-    });
+      const reshaped = upscaled.transpose([0, 3, 1, 2]);
+      const sharpened = tf.conv2d(reshaped, kernel, 1, 'same')
+        .transpose([0, 2, 3, 1])
+        .clipByValue(0, 1);
+
+      const output = sharpened.squeeze().mul(255).cast('int32');
+      return output;
+    }).then(output => this.tensorToImageData(output, newWidth, newHeight));
+  }
+
+  /* ===================== DENOISE ===================== */
+  async denoise(canvas) {
+    const { width, height } = canvas;
+    const imageData = canvas.getContext('2d').getImageData(0, 0, width, height);
+
+    // Simple box blur (fast, no TF needed for denoise)
+    const src = imageData.data;
+    const dst = new ImageData(width, height);
+    const r = 1; // blur radius
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let rSum = 0, gSum = 0, bSum = 0, count = 0;
+        for (let dy = -r; dy <= r; dy++) {
+          for (let dx = -r; dx <= r; dx++) {
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+              const i = (ny * width + nx) * 4;
+              rSum += src[i];
+              gSum += src[i + 1];
+              bSum += src[i + 2];
+              count++;
+            }
+          }
+        }
+        const i = (y * width + x) * 4;
+        // Blend 70% blurred + 30% original
+        dst.data[i]     = Math.round(src[i] * 0.3 + (rSum / count) * 0.7);
+        dst.data[i + 1] = Math.round(src[i + 1] * 0.3 + (gSum / count) * 0.7);
+        dst.data[i + 2] = Math.round(src[i + 2] * 0.3 + (bSum / count) * 0.7);
+        dst.data[i + 3] = 255;
+      }
+    }
+
+    return dst;
+  }
+
+  /* ===================== SHARPEN ===================== */
+  async sharpen(canvas) {
+    const { width, height } = canvas;
+    const imageData = canvas.getContext('2d').getImageData(0, 0, width, height);
+
+    // Unsharp mask with canvas (fast, no TF needed)
+    const src = imageData.data;
+    const dst = new ImageData(width, height);
+
+    // Simple 3x3 sharpen kernel: center=5, neighbors=-1
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        for (let c = 0; c < 3; c++) {
+          const i = (y * width + x) * 4 + c;
+          const val =
+            -src[((y - 1) * width + x) * 4 + c] +
+            -src[(y * width + x - 1) * 4 + c] +
+            5 * src[i] +
+            -src[(y * width + x + 1) * 4 + c] +
+            -src[((y + 1) * width + x) * 4 + c];
+          dst.data[i] = Math.max(0, Math.min(255, val));
+        }
+        dst.data[(y * width + x) * 4 + 3] = 255;
+      }
+    }
+
+    // Fill edges
+    for (let x = 0; x < width; x++) {
+      dst.data[x * 4 + 3] = 255;
+      dst.data[((height - 1) * width + x) * 4 + 3] = 255;
+    }
+    for (let y = 0; y < height; y++) {
+      dst.data[(y * width) * 4 + 3] = 255;
+      dst.data[(y * width + width - 1) * 4 + 3] = 255;
+    }
+
+    return dst;
+  }
+
+  /* ===================== HELPERS ===================== */
+  async tensorToImageData(tensor, width, height) {
+    const data = await tensor.data();
+    const imageData = new ImageData(width, height);
+    for (let i = 0; i < data.length; i++) {
+      imageData.data[i * 4]     = data[i * 3];
+      imageData.data[i * 4 + 1] = data[i * 3 + 1];
+      imageData.data[i * 4 + 2] = data[i * 3 + 2];
+      imageData.data[i * 4 + 3] = 255;
+    }
+    return imageData;
+  }
+
+  async processFrame(canvas, enhancement) {
+    switch (enhancement) {
+      case 'upscale2':
+        return await this.upscale(canvas, 2);
+      case 'upscale4':
+        return await this.upscale(canvas, 4);
+      case 'denoise':
+        return await this.denoise(canvas);
+      case 'sharpen':
+        return await this.sharpen(canvas);
+      default:
+        return canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+    }
   }
 
   /* ===================== VIDEO PROCESSING ===================== */
   async processVideo(videoFile, enhancement, onProgress, onFrame) {
     this.isProcessing = true;
-    this.abortController = new AbortController();
+    this.aborted = false;
 
     const video = document.createElement('video');
     video.src = URL.createObjectURL(videoFile);
     video.muted = true;
     video.playsInline = true;
+    video.crossOrigin = 'anonymous';
 
+    // Wait for metadata
     await new Promise((resolve, reject) => {
       video.onloadedmetadata = resolve;
-      video.onerror = reject;
+      video.onerror = () => reject(new Error('Не удалось загрузить видео'));
     });
 
-    const { duration, videoWidth, videoHeight } = video;
+    const duration = video.duration;
+    const videoW = video.videoWidth;
+    const videoH = video.videoHeight;
 
-    // Limit to 720p processing for performance
-    const maxDim = 720;
-    let processWidth = videoWidth;
-    let processHeight = videoHeight;
-
-    if (videoWidth > maxDim || videoHeight > maxDim) {
-      const ratio = Math.min(maxDim / videoWidth, maxDim / videoHeight);
-      processWidth = Math.round(videoWidth * ratio);
-      processHeight = Math.round(videoHeight * ratio);
+    // Limit dimensions
+    const maxDim = 640;
+    let srcW = videoW;
+    let srcH = videoH;
+    if (videoW > maxDim || videoH > maxDim) {
+      const ratio = Math.min(maxDim / videoW, maxDim / videoH);
+      srcW = Math.round(videoW * ratio);
+      srcH = Math.round(videoH * ratio);
     }
 
-    // Setup offscreen canvas
-    const offCanvas = document.createElement('canvas');
-    offCanvas.width = processWidth;
-    offCanvas.height = processHeight;
-    const offCtx = offCanvas.getContext('2d');
+    let outW = srcW;
+    let outH = srcH;
+    if (enhancement === 'upscale2') { outW = srcW * 2; outH = srcH * 2; }
+    if (enhancement === 'upscale4') { outW = srcW * 4; outH = srcH * 4; }
 
-    // Setup output canvas for recording
-    const outputCanvas = document.createElement('canvas');
-    let outputWidth = processWidth;
-    let outputHeight = processHeight;
+    // Source canvas (draw video frames here)
+    const srcCanvas = document.createElement('canvas');
+    srcCanvas.width = srcW;
+    srcCanvas.height = srcH;
+    const srcCtx = srcCanvas.getContext('2d');
 
-    if (enhancement === 'upscale2') {
-      outputWidth = processWidth * 2;
-      outputHeight = processHeight * 2;
-    } else if (enhancement === 'upscale4') {
-      outputWidth = processWidth * 4;
-      outputHeight = processHeight * 4;
-    }
+    // Output canvas (processed frames go here)
+    const outCanvas = document.createElement('canvas');
+    outCanvas.width = outW;
+    outCanvas.height = outH;
+    const outCtx = outCanvas.getContext('2d');
 
-    outputCanvas.width = outputWidth;
-    outputCanvas.height = outputHeight;
-    const outputCtx = outputCanvas.getContext('2d');
-
-    // Setup MediaRecorder
-    const stream = outputCanvas.captureStream(30);
+    // MediaRecorder
+    const stream = outCanvas.captureStream(0); // manual frame capture
     const chunks = [];
-
     let mimeType = 'video/webm;codecs=vp9';
-    if (!MediaRecorder.isTypeSupported(mimeType)) {
-      mimeType = 'video/webm';
-    }
+    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
 
     const recorder = new MediaRecorder(stream, {
       mimeType,
-      videoBitsPerSecond: 8000000
+      videoBitsPerSecond: 5000000
     });
 
     recorder.ondataavailable = (e) => {
@@ -261,116 +210,68 @@ class VideoProcessor {
     };
 
     const recordingDone = new Promise((resolve) => {
-      recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: 'video/webm' });
-        resolve(blob);
-      };
+      recorder.onstop = () => resolve(new Blob(chunks, { type: 'video/webm' }));
     });
 
     // Start recording
     recorder.start();
 
-    // Play video
+    // Process video at 10fps (avoids overwhelming the GPU)
+    const targetFps = 10;
+    const frameDuration = 1 / targetFps;
+    const totalFrames = Math.floor(duration * targetFps);
+
+    // Seek-based frame extraction
     video.currentTime = 0;
-    await video.play();
+    await new Promise(r => { video.onseeked = r; });
 
-    // Process frame by frame
-    const fps = 30;
-    const totalFrames = Math.floor(duration * fps);
-    let currentFrame = 0;
+    for (let frame = 0; frame < totalFrames; frame++) {
+      if (this.aborted) break;
 
-    const processFrame = async () => {
-      if (!this.isProcessing || this.abortController.signal.aborted) {
-        video.pause();
-        recorder.stop();
-        return;
+      // Draw current video frame
+      srcCtx.drawImage(video, 0, 0, srcW, srcH);
+
+      // Process
+      const processed = await this.processFrame(srcCanvas, enhancement);
+      outCtx.putImageData(processed, 0, 0);
+
+      // Request a frame capture from the stream
+      if (stream.getVideoTracks()[0] && stream.getVideoTracks()[0].requestFrame) {
+        stream.getVideoTracks()[0].requestFrame();
       }
 
-      if (video.ended || video.paused) {
-        recorder.stop();
-        return;
-      }
+      // Send preview
+      if (onFrame) onFrame(outCanvas);
 
-      // Draw current frame
-      offCtx.drawImage(video, 0, 0, processWidth, processHeight);
-
-      // Process with selected enhancement
-      let processedImageData;
-      switch (enhancement) {
-        case 'upscale2':
-          processedImageData = await this.upscale2x(offCanvas);
-          break;
-        case 'upscale4':
-          processedImageData = await this.upscale4x(offCanvas);
-          break;
-        case 'denoise':
-          processedImageData = await this.denoise(offCanvas);
-          break;
-        case 'sharpen':
-          processedImageData = await this.sharpen(offCanvas);
-          break;
-        default:
-          processedImageData = offCtx.getImageData(0, 0, processWidth, processHeight);
-      }
-
-      // Draw processed frame to output
-      outputCtx.putImageData(processedImageData, 0, 0);
-
-      // Send frame for preview
-      if (onFrame) {
-        onFrame(outputCanvas);
-      }
-
-      currentFrame++;
-      const progress = (currentFrame / totalFrames) * 100;
+      // Update progress
+      const progress = ((frame + 1) / totalFrames) * 100;
       if (onProgress) onProgress(Math.min(progress, 100));
 
-      // Schedule next frame
-      if (currentFrame < totalFrames) {
-        requestAnimationFrame(processFrame);
-      } else {
-        recorder.stop();
+      // Seek to next frame
+      const nextTime = (frame + 1) * frameDuration;
+      if (nextTime < duration) {
+        video.currentTime = nextTime;
+        await new Promise(r => { video.onseeked = r; });
       }
-    };
+    }
 
-    // Start processing when video plays
-    video.onplaying = () => {
-      processFrame();
-    };
+    // Stop recording
+    if (recorder.state === 'recording') {
+      recorder.stop();
+    }
 
-    // Wait for recording to finish
     const result = await recordingDone;
 
-    // Cleanup
     URL.revokeObjectURL(video.src);
     this.isProcessing = false;
 
     return result;
   }
 
-  /* ===================== SINGLE FRAME PROCESS ===================== */
-  async processFrame(canvas, enhancement) {
-    switch (enhancement) {
-      case 'upscale2':
-        return await this.upscale2x(canvas);
-      case 'upscale4':
-        return await this.upscale4x(canvas);
-      case 'denoise':
-        return await this.denoise(canvas);
-      case 'sharpen':
-        return await this.sharpen(canvas);
-      default:
-        return this.ctx.getImageData(0, 0, canvas.width, canvas.height);
-    }
-  }
-
   abort() {
+    this.aborted = true;
     this.isProcessing = false;
-    if (this.abortController) {
-      this.abortController.abort();
-    }
   }
 }
 
-// Export
 window.VideoProcessor = VideoProcessor;
