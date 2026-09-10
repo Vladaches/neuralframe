@@ -16,6 +16,10 @@
 
   <!-- Styles -->
   <link rel="stylesheet" href="css/styles.css">
+
+  <!-- Yandex.RTB Loader -->
+  <script>window.yaContextCb=window.yaContextCb||[]</script>
+  <script src="https://yandex.ru/ads/system/context.js" async></script>
 </head>
 <body>
 
@@ -81,8 +85,16 @@
   <!-- ==================== AD SLOT 1 ==================== -->
   <div class="ad-slot container">
     <div class="ad-placeholder" id="ad-slot-1">
-      <!-- Yandex.RSA code here -->
-      <span class="ad-label">Реклама</span>
+      <!-- Yandex.RTB R-A-20022015-1 -->
+      <div id="yandex_rtb_R-A-20022015-1"></div>
+      <script>
+      window.yaContextCb.push(() => {
+          Ya.Context.AdvManager.render({
+              "blockId": "R-A-20022015-1",
+              "renderTo": "yandex_rtb_R-A-20022015-1"
+          })
+      })
+      </script>
     </div>
   </div>
 

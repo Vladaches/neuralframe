@@ -378,13 +378,10 @@ img {
 
 .ad-placeholder {
   position: relative;
-  background: var(--glass-bg);
-  border: 1px dashed var(--graphite);
-  border-radius: var(--radius-lg);
-  min-height: 90px;
   display: flex;
   align-items: center;
   justify-content: center;
+  min-height: 90px;
   overflow: hidden;
 }
 
@@ -394,6 +391,7 @@ img {
   color: var(--ash);
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  padding: 24px;
 }
 
 /* ===================== SECTION HEADER ===================== */
