@@ -56,14 +56,17 @@ class VideoProcessor {
           d[(y*w+x)*4+3] = 255;
         }
       }
-      // Copy edges
+      // Copy edges (RGB + alpha from source)
       for (let x = 0; x < w; x++) {
-        d[x*4+3] = 255;
-        d[((h-1)*w+x)*4+3] = 255;
+        d[x*4] = px[x*4]; d[x*4+1] = px[x*4+1]; d[x*4+2] = px[x*4+2]; d[x*4+3] = 255;
+        const bi = ((h-1)*w+x)*4;
+        d[bi] = px[bi]; d[bi+1] = px[bi+1]; d[bi+2] = px[bi+2]; d[bi+3] = 255;
       }
       for (let y = 0; y < h; y++) {
-        d[(y*w)*4+3] = 255;
-        d[(y*w+w-1)*4+3] = 255;
+        const li = (y*w)*4;
+        d[li] = px[li]; d[li+1] = px[li+1]; d[li+2] = px[li+2]; d[li+3] = 255;
+        const ri = (y*w+w-1)*4;
+        d[ri] = px[ri]; d[ri+1] = px[ri+1]; d[ri+2] = px[ri+2]; d[ri+3] = 255;
       }
       return out;
     }
@@ -100,8 +103,17 @@ class VideoProcessor {
           d[(y*outW+x)*4+3] = 255;
         }
       }
-      for (let x = 0; x < outW; x++) { d[x*4+3] = 255; d[((outH-1)*outW+x)*4+3] = 255; }
-      for (let y = 0; y < outH; y++) { d[(y*outW)*4+3] = 255; d[(y*outW+outW-1)*4+3] = 255; }
+      for (let x = 0; x < outW; x++) {
+        d[x*4] = upPx[x*4]; d[x*4+1] = upPx[x*4+1]; d[x*4+2] = upPx[x*4+2]; d[x*4+3] = 255;
+        const bi = ((outH-1)*outW+x)*4;
+        d[bi] = upPx[bi]; d[bi+1] = upPx[bi+1]; d[bi+2] = upPx[bi+2]; d[bi+3] = 255;
+      }
+      for (let y = 0; y < outH; y++) {
+        const li = (y*outW)*4;
+        d[li] = upPx[li]; d[li+1] = upPx[li+1]; d[li+2] = upPx[li+2]; d[li+3] = 255;
+        const ri = (y*outW+outW-1)*4;
+        d[ri] = upPx[ri]; d[ri+1] = upPx[ri+1]; d[ri+2] = upPx[ri+2]; d[ri+3] = 255;
+      }
       return out;
     }
 
@@ -202,8 +214,14 @@ class VideoProcessor {
 
             // Seek
             await new Promise((res, rej) => {
-              video.onseeked = res;
-              video.onerror = rej;
+              let seekTimer;
+              const clearSeekTimer = () => { clearTimeout(seekTimer); video.onseeked = null; video.onerror = null; };
+              seekTimer = setTimeout(() => {
+                clearSeekTimer();
+                rej(new Error('Не удалось получить кадр видео'));
+              }, 10000);
+              video.onseeked = () => { clearSeekTimer(); res(); };
+              video.onerror = (e) => { clearSeekTimer(); rej(e); };
               video.currentTime = time;
             });
 
@@ -222,6 +240,20 @@ class VideoProcessor {
 
             // Yield to browser
             await new Promise(r => setTimeout(r, 0));
+          }
+
+          if (this.aborted) {
+            recorder.stop();
+            cleanup();
+            reject(new DOMException('Обработка отменена', 'AbortError'));
+            return;
+          }
+
+          if (totalFrames === 0) {
+            recorder.stop();
+            cleanup();
+            reject(new Error('Видео слишком короткое'));
+            return;
           }
 
           recorder.stop();

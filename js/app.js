@@ -60,6 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let currentFile = null;
   let processedBlob = null;
+  let processedEnhancement = null;
 
   // Click to upload
   uploadArea.addEventListener('click', () => fileInput.click());
@@ -93,6 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
     currentFile = file;
     processedBlob = null;
     const url = URL.createObjectURL(file);
+    if (originalVideo.src) URL.revokeObjectURL(originalVideo.src);
     originalVideo.src = url;
 
     uploadArea.classList.add('hidden');
@@ -119,6 +121,7 @@ document.addEventListener('DOMContentLoaded', () => {
     enhancedCanvas.style.display = 'none';
 
     const enhancement = enhancementSelect.value;
+    processedEnhancement = enhancement;
 
     try {
       progressText.textContent = 'Обработка...';
@@ -144,6 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       onComplete();
     } catch (err) {
+      if (err.name === 'AbortError') return;
       console.error('Processing error:', err);
       const msg = err.message || 'Неизвестная ошибка';
       progressText.textContent = 'Ошибка: ' + msg;
@@ -161,7 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (processedBlob) {
         const url = URL.createObjectURL(processedBlob);
         downloadBtn.href = url;
-        downloadBtn.download = `neuralframe_${enhancementSelect.value}.webm`;
+        downloadBtn.download = `neuralframe_${processedEnhancement}.webm`;
       }
     }, 500);
   }
@@ -171,6 +175,8 @@ document.addEventListener('DOMContentLoaded', () => {
     processor.abort();
     currentFile = null;
     processedBlob = null;
+    processedEnhancement = null;
+    if (originalVideo.src) URL.revokeObjectURL(originalVideo.src);
     originalVideo.src = '';
 
     previewArea.classList.add('hidden');
