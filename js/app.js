@@ -2,9 +2,38 @@
    NeuralFrame — App Logic
    ============================================ */
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
 
   const processor = new VideoProcessor();
+
+  /* ===================== NEURAL NETWORK INIT ===================== */
+  const nnStatus = document.getElementById('nnStatus');
+  if (window.NeuralUpscaler) {
+    nnStatus.classList.remove('hidden');
+    nnStatus.textContent = 'Загрузка ИИ-модели...';
+    try {
+      const r = await NeuralUpscaler.init();
+      if (r.ok) {
+        processor.setNeuralSession(r.session);
+        nnStatus.textContent = 'ИИ-режим активен: апскейлинг 2x/4x через нейросеть (WebGPU)';
+        nnStatus.classList.add('ok');
+      } else {
+        const reasons = {
+          ort: 'библиотека ИИ не загрузилась',
+          webgpu: 'нужен Chrome/Edge с поддержкой WebGPU',
+          fetch: 'не удалось загрузить модель',
+          create: 'не удалось создать сессию ИИ'
+        };
+        nnStatus.textContent = 'ИИ-ускорение недоступно (' + (reasons[r.reason] || 'ошибка') + '). Используется обычный алгоритм.';
+        nnStatus.classList.add('warn');
+      }
+    } catch (e) {
+      nnStatus.textContent = 'ИИ-ускорение недоступно (ошибка инициализации). Используется обычный алгоритм.';
+      nnStatus.classList.add('warn');
+    }
+  } else {
+    nnStatus.classList.add('hidden');
+  }
 
   /* ===================== BURGER MENU ===================== */
   const burger = document.getElementById('burger');

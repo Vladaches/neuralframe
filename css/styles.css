@@ -61,6 +61,10 @@
   --radius-xl: 16px;
   --radius-full: 9999px;
 
+  /* Status */
+  --ok: #34d399;
+  --warn: #fbbf24;
+
   /* Transitions */
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --duration: 0.3s;
@@ -909,3 +913,24 @@ img {
 .hero-title { animation-delay: 0.1s; }
 .hero-subtitle { animation-delay: 0.2s; }
 .hero-actions { animation-delay: 0.3s; }
+
+/* ===================== NN STATUS ===================== */
+.nn-status {
+  margin-top: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius-md);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  font-size: 13px;
+  color: var(--fog);
+}
+
+.nn-status.ok {
+  color: var(--ok);
+  border-color: rgba(52, 211, 153, 0.3);
+}
+
+.nn-status.warn {
+  color: var(--warn);
+  border-color: rgba(251, 191, 36, 0.3);
+}

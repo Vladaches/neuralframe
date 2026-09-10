@@ -1,14 +1,23 @@
 /* ============================================
-   NeuralFrame — Video Processor v3
+   NeuralFrame — Video Processor v3 + Neural
    ============================================ */
 
 class VideoProcessor {
   constructor() {
     this.isProcessing = false;
     this.aborted = false;
+    this.nnSession = null;
   }
 
-  /* ===================== ENHANCE ===================== */
+  get neuralAvailable() {
+    return !!this.nnSession;
+  }
+
+  setNeuralSession(session) {
+    this.nnSession = session;
+  }
+
+  /* ===================== ENHANCE (canvas fallback) ===================== */
   enhance(srcCanvas, type) {
     const { width: w, height: h } = srcCanvas;
     const srcCtx = srcCanvas.getContext('2d');
@@ -141,6 +150,22 @@ class VideoProcessor {
         reject(new Error('Не удалось загрузить видеофайл'));
       };
 
+      // Seek helper with 10s timeout (shared between neural and canvas paths)
+      const seekTo = (targetTime) => new Promise((res, rej) => {
+        let timer = null;
+        const onSeeked = () => {
+          clearTimeout(timer);
+          video.removeEventListener('seeked', onSeeked);
+          res();
+        };
+        timer = setTimeout(() => {
+          video.removeEventListener('seeked', onSeeked);
+          rej(new Error('Таймаут seeks — видео слишком большое или повреждено'));
+        }, 10000);
+        video.addEventListener('seeked', onSeeked);
+        video.currentTime = targetTime;
+      });
+
       video.onloadedmetadata = () => {
         try {
           const duration = video.duration;
@@ -169,7 +194,18 @@ class VideoProcessor {
             drawH = Math.round(srcH * ratio);
           }
 
-          // Output dimensions
+          // Neural branch: two-pass pipeline (render then record)
+          const useNeural = (enhancement === 'upscale2' || enhancement === 'upscale4') && this.nnSession;
+          if (useNeural) {
+            this._runNeuralPipeline({
+              video, duration, drawW, drawH, enhancement,
+              srcW, srcH, cleanup, resolve, reject, seekTo,
+              onProgress, onFrame
+            });
+            return;
+          }
+
+          // ===== Canvas fallback path (unchanged) =====
           const scale = (enhancement === 'upscale4') ? 4 : (enhancement === 'upscale2') ? 2 : 1;
           const outW = drawW * scale;
           const outH = drawH * scale;
@@ -280,6 +316,166 @@ class VideoProcessor {
 
       video.src = URL.createObjectURL(videoFile);
     });
+  }
+
+  /* ===================== NEURAL PIPELINE ===================== */
+  async _runNeuralPipeline({ video, duration, drawW, drawH, enhancement, cleanup, resolve, reject, seekTo, onProgress, onFrame }) {
+    const fps = 10;
+    const totalFrames = Math.max(1, Math.ceil(duration * fps));
+
+    // Memory guard: max ~15s for neural mode
+    if (totalFrames > 150) {
+      cleanup();
+      reject(new Error('Слишком длинное видео для ИИ-режима (макс. ~15 сек). Уменьшите длительность или используйте обычный режим.'));
+      return;
+    }
+
+    // Output dimensions: NN always produces 4×; upscale4 keeps it, upscale2 downscales
+    const factor = 4;
+    const nnW = drawW * factor;
+    const nnH = drawH * factor;
+    const outW = (enhancement === 'upscale2') ? drawW * 2 : nnW;
+    const outH = (enhancement === 'upscale2') ? drawH * 2 : nnH;
+
+    // Canvases
+    const srcCanvas = document.createElement('canvas');
+    srcCanvas.width = drawW;
+    srcCanvas.height = drawH;
+    const srcCtx = srcCanvas.getContext('2d');
+
+    const outCanvas = document.createElement('canvas');
+    outCanvas.width = outW;
+    outCanvas.height = outH;
+    const outCtx = outCanvas.getContext('2d');
+
+    // Temp 4× canvas (only used for upscale2 downscale path)
+    let tmp4xCanvas = null;
+    if (enhancement === 'upscale2') {
+      tmp4xCanvas = document.createElement('canvas');
+      tmp4xCanvas.width = nnW;
+      tmp4xCanvas.height = nnH;
+    }
+
+    // Cleanup helper
+    const neuralCleanup = () => {
+      URL.revokeObjectURL(video.src);
+      this.isProcessing = false;
+    };
+
+    // ======================================================
+    // PASS 1 — RENDER: seek, extract, neural-run, store blobs
+    // ======================================================
+    const frames = [];
+    let processed = 0;
+
+    try {
+      for (let frame = 0; frame < totalFrames; frame++) {
+        if (this.aborted) {
+          neuralCleanup();
+          reject(new DOMException('Обработка отменена', 'AbortError'));
+          return;
+        }
+
+        const time = frame / fps;
+        await seekTo(time);
+
+        srcCtx.drawImage(video, 0, 0, drawW, drawH);
+        const srcImg = srcCtx.getImageData(0, 0, drawW, drawH);
+        const hiRes = await NeuralUpscaler.run(this.nnSession, srcImg); // 4× RGBA
+
+        if (enhancement === 'upscale2') {
+          // put hiRes (4×) onto tmp canvas, then downscale to 2× outCanvas
+          const tmpCtx = tmp4xCanvas.getContext('2d');
+          tmpCtx.putImageData(hiRes, 0, 0);
+          outCtx.imageSmoothingEnabled = true;
+          outCtx.imageSmoothingQuality = 'high';
+          outCtx.drawImage(tmp4xCanvas, 0, 0, outW, outH);
+        } else {
+          outCtx.putImageData(hiRes, 0, 0);
+        }
+
+        // Store frame as JPEG blob to save memory
+        const blob = await new Promise(res => outCanvas.toBlob(res, 'image/jpeg', 0.92));
+        frames.push(blob);
+        processed++;
+        if (onProgress) onProgress((processed / totalFrames) * 50); // 0..50% during pass 1
+
+        if (onFrame) onFrame(outCanvas);
+
+        // Yield to keep UI responsive
+        await new Promise(r => setTimeout(r, 0));
+      }
+
+      // Memory estimate
+      const totalBlobBytes = frames.reduce((sum, b) => sum + b.size, 0);
+      console.info(`[NeuralPipeline] Pass 1 done. ${frames.length} frames, ~${(totalBlobBytes / 1048576).toFixed(1)} MB in blobs.`);
+
+    } catch (err) {
+      neuralCleanup();
+      reject(err);
+      return;
+    }
+
+    // ======================================================
+    // PASS 2 — RECORD: replay blobs at real-time 10fps
+    // ======================================================
+    let mimeType = 'video/webm;codecs=vp9';
+    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+
+    let stream;
+    try {
+      stream = outCanvas.captureStream(fps);
+    } catch (e) {
+      neuralCleanup();
+      reject(new Error('Ваш браузер не поддерживает запись видео. Попробуйте Chrome.'));
+      return;
+    }
+
+    const chunks = [];
+    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 4000000 });
+    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+
+    const done = new Promise(res => {
+      recorder.onstop = () => res(new Blob(chunks, { type: 'video/webm' }));
+    });
+
+    recorder.start(100);
+
+    try {
+      const T0 = performance.now();
+
+      for (let i = 0; i < frames.length; i++) {
+        if (this.aborted) {
+          if (recorder.state === 'recording') recorder.stop();
+          neuralCleanup();
+          reject(new DOMException('Обработка отменена', 'AbortError'));
+          return;
+        }
+
+        const bitmap = await createImageBitmap(frames[i]);
+        outCtx.clearRect(0, 0, outW, outH);
+        outCtx.drawImage(bitmap, 0, 0, outW, outH);
+        bitmap.close();
+
+        // Wait until real-time moment
+        const targetTime = T0 + (i + 1) * (1000 / fps);
+        const delay = targetTime - performance.now();
+        if (delay > 0) await new Promise(r => setTimeout(r, delay));
+
+        if (onProgress) onProgress(50 + ((i + 1) / frames.length) * 50); // 50..100%
+        if (onFrame) onFrame(outCanvas);
+      }
+
+      recorder.stop();
+      const result = await done;
+      neuralCleanup();
+      resolve(result);
+
+    } catch (err) {
+      if (recorder.state === 'recording') recorder.stop();
+      neuralCleanup();
+      reject(err);
+    }
   }
 
   abort() {
