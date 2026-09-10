@@ -121,14 +121,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const enhancement = enhancementSelect.value;
 
     try {
-      // Check TF.js
-      if (typeof tf === 'undefined') {
-        throw new Error('TensorFlow.js не загружен. Обновите страницу.');
-      }
-
-      progressText.textContent = 'Инициализация AI...';
-      await tf.ready();
-      console.log('TF backend:', tf.getBackend());
+      progressText.textContent = 'Обработка...';
 
       processedBlob = await processor.processVideo(
         currentFile,
@@ -153,7 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (err) {
       console.error('Processing error:', err);
       const msg = err.message || 'Неизвестная ошибка';
-      progressText.textContent = `Ошибка: ${msg}`;
+      progressText.textContent = 'Ошибка: ' + msg;
       progressFill.style.width = '0%';
       processBtn.classList.remove('hidden');
     }
@@ -213,20 +206,5 @@ document.addEventListener('DOMContentLoaded', () => {
     el.style.transition = 'opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1)';
     observer.observe(el);
   });
-
-  /* ===================== TF LOADING STATUS ===================== */
-  async function initTF() {
-    if (typeof tf === 'undefined') {
-      console.warn('TensorFlow.js не загружен');
-      return;
-    }
-    try {
-      await tf.ready();
-      console.log('TensorFlow.js ready. Backend:', tf.getBackend());
-    } catch (e) {
-      console.error('TF init error:', e);
-    }
-  }
-  initTF();
 
 });
