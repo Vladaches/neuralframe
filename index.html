@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeuralFrame — AI-обработка видео</title>
+  <meta name="description" content="Улучшайте видео с помощью нейросетей прямо в браузере. Апскейлинг, шумоподавление, стилизация — вся обработка на вашем устройстве.">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 4L10 12L4 20H8L14 12L8 4H4Z' fill='%23a855f7'/%3E%3Cpath d='M12 4L18 12L12 20H16L22 12L16 4H12Z' fill='%236366f1'/%3E%3C/svg%3E">
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- ==================== NAVBAR ==================== -->
+  <nav class="navbar">
+    <div class="container navbar-inner">
+      <a href="#" class="logo">
+        <svg class="logo-icon" width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M4 4L10 12L4 20H8L14 12L8 4H4Z" fill="#a855f7"/>
+          <path d="M12 4L18 12L12 20H16L22 12L16 4H12Z" fill="#6366f1"/>
+        </svg>
+        <span class="logo-text">NeuralFrame</span>
+      </a>
+
+      <div class="nav-links" id="navLinks">
+        <a href="#features" class="nav-link">Возможности</a>
+        <a href="#how-it-works" class="nav-link">Как работает</a>
+        <a href="#demo" class="nav-link">Попробовать</a>
+      </div>
+
+      <a href="#demo" class="nav-cta">Начать</a>
+
+      <button class="burger" id="burger" aria-label="Открыть меню">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Mobile Nav -->
+  <div class="mobile-nav" id="mobileNav">
+    <a href="#features" class="nav-link">Возможности</a>
+    <a href="#how-it-works" class="nav-link">Как работает</a>
+    <a href="#demo" class="nav-link">Попробовать</a>
+  </div>
+
+  <!-- ==================== HERO ==================== -->
+  <section class="hero">
+    <div class="container hero-inner">
+      <div class="hero-badge">AI-обработка</div>
+      <h1 class="hero-title">
+        Улучшайте видео
+        <span class="hero-accent">с помощью нейросетей</span>
+      </h1>
+      <p class="hero-subtitle">
+        Апскейлинг до 4x, шумоподавление и стилизация видео прямо в браузере.
+        Вся обработка происходит на вашем устройстве — без загрузок и ожидания.
+      </p>
+      <div class="hero-actions">
+        <a href="#demo" class="btn btn-primary">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M8 2L14 8L8 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Попробовать
+        </a>
+        <a href="#how-it-works" class="btn btn-ghost">Узнать больше</a>
+      </div>
+    </div>
+    <div class="hero-glow"></div>
+  </section>
+
+  <!-- ==================== AD SLOT 1 ==================== -->
+  <div class="ad-slot container">
+    <div class="ad-placeholder" id="ad-slot-1">
+      <!-- Yandex.RSA code here -->
+      <span class="ad-label">Реклама</span>
+    </div>
+  </div>
+
+  <!-- ==================== FEATURES ==================== -->
+  <section class="features" id="features">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">AI-возможности</h2>
+        <p class="section-subtitle">Профессиональные инструменты улучшения видео на базе нейросетей</p>
+      </div>
+
+      <div class="features-grid">
+
+        <div class="feature-card glass-card">
+          <div class="feature-icon feature-icon--up">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <path d="M8 16L12 12L16 16"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+            </svg>
+          </div>
+          <h3 class="feature-title">Апскейлинг 4x</h3>
+          <p class="feature-desc">Увеличьте разрешение видео до 4 раз с помощью нейросетей реального времени.</p>
+          <span class="feature-tag">2x / 4x</span>
+        </div>
+
+        <div class="feature-card glass-card">
+          <div class="feature-icon feature-icon--dn">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="12" cy="12" r="9"/>
+              <path d="M12 8V12"/>
+              <path d="M12 16H12.01"/>
+            </svg>
+          </div>
+          <h3 class="feature-title">Шумоподавление</h3>
+          <p class="feature-desc">Удалите шум и зернистость из видео, снятого в плохих условиях освещения.</p>
+          <span class="feature-tag">DnCNN</span>
+        </div>
+
+        <div class="feature-card glass-card">
+          <div class="feature-icon feature-icon--st">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M12 2L2 7L12 12L22 7L12 2Z"/>
+              <path d="M2 17L12 22L22 17"/>
+              <path d="M2 12L12 17L22 12"/>
+            </svg>
+          </div>
+          <h3 class="feature-title">Стилизация</h3>
+          <p class="feature-desc">Превратите видео в художественный стиль — картины, наброски и многое другое.</p>
+          <span class="feature-tag">Style Transfer</span>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== AD SLOT 2 ==================== -->
+  <div class="ad-slot container">
+    <div class="ad-placeholder" id="ad-slot-2">
+      <span class="ad-label">Реклама</span>
+    </div>
+  </div>
+
+  <!-- ==================== HOW IT WORKS ==================== -->
+  <section class="how-it-works" id="how-it-works">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">Как это работает</h2>
+        <p class="section-subtitle">Три простых шага для улучшения вашего видео</p>
+      </div>
+
+      <div class="steps-grid">
+        <div class="step">
+          <div class="step-number">01</div>
+          <h3 class="step-title">Загрузка</h3>
+          <p class="step-desc">Выберите или перетащите видеофайл. Поддерживаются форматы MP4, WebM и MOV.</p>
+        </div>
+        <div class="step-arrow">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M5 12H19M19 12L12 5M19 12L12 19"/>
+          </svg>
+        </div>
+        <div class="step">
+          <div class="step-number">02</div>
+          <h3 class="step-title">Обработка</h3>
+          <p class="step-desc">Выберите тип улучшения и дайте AI обработать видео на вашем устройстве.</p>
+        </div>
+        <div class="step-arrow">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M5 12H19M19 12L12 5M19 12L12 19"/>
+          </svg>
+        </div>
+        <div class="step">
+          <div class="step-number">03</div>
+          <h3 class="step-title">Скачивание</h3>
+          <p class="step-desc">Сохраните улучшенное видео на устройство. Без водяных знаков и ограничений.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== AD SLOT 3 ==================== -->
+  <div class="ad-slot container">
+    <div class="ad-placeholder" id="ad-slot-3">
+      <span class="ad-label">Реклама</span>
+    </div>
+  </div>
+
+  <!-- ==================== DEMO / UPLOAD ==================== -->
+  <section class="demo" id="demo">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">Попробуйте сейчас</h2>
+        <p class="section-subtitle">Загрузите видео и увидите AI в действии</p>
+      </div>
+
+      <div class="demo-card glass-card">
+        <!-- Upload Area -->
+        <div class="upload-area" id="uploadArea">
+          <div class="upload-icon">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M24 32V16"/>
+              <path d="M16 24L24 16L32 24"/>
+              <path d="M40 32V36C40 38.2091 38.2091 40 36 40H12C9.79086 40 8 38.2091 8 36V32"/>
+            </svg>
+          </div>
+          <p class="upload-text">Перетащите видео сюда или <span class="upload-link">выберите файл</span></p>
+          <p class="upload-hint">MP4, WebM, MOV — до 500 МБ</p>
+          <input type="file" id="fileInput" accept="video/*" hidden>
+        </div>
+
+        <!-- Preview Area (hidden by default) -->
+        <div class="preview-area hidden" id="previewArea">
+          <div class="preview-grid">
+            <div class="preview-box">
+              <span class="preview-label">Оригинал</span>
+              <video id="originalVideo" controls></video>
+            </div>
+            <div class="preview-box">
+              <span class="preview-label">Улучшенное</span>
+              <canvas id="enhancedCanvas" class="enhanced-canvas"></canvas>
+              <div class="preview-placeholder" id="enhancedPlaceholder">
+                <p>Результат появится здесь</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Controls -->
+          <div class="controls">
+            <div class="control-group">
+              <label class="control-label">Тип улучшения</label>
+              <div class="select-wrapper">
+                <select id="enhancementSelect" class="glass-select">
+                  <option value="upscale2">Апскейлинг 2x</option>
+                  <option value="upscale4">Апскейлинг 4x</option>
+                  <option value="denoise">Шумоподавление</option>
+                  <option value="sharpen">Повышение резкости</option>
+                </select>
+              </div>
+            </div>
+            <button class="btn btn-primary btn-lg" id="processBtn">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M4 2L14 8L4 14V2Z" fill="currentColor"/>
+              </svg>
+              Обработать видео
+            </button>
+          </div>
+
+          <!-- Progress (hidden by default) -->
+          <div class="progress-area hidden" id="progressArea">
+            <div class="progress-bar">
+              <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <p class="progress-text" id="progressText">Обработка... 0%</p>
+          </div>
+
+          <!-- Download (hidden by default) -->
+          <div class="download-area hidden" id="downloadArea">
+            <a href="#" class="btn btn-primary btn-lg" id="downloadBtn" download>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M8 2V12M8 12L4 8M8 12L12 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2 14H14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              Скачать улучшенное видео
+            </a>
+            <button class="btn btn-ghost" id="resetBtn">Обработать ещё</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== FOOTER ==================== -->
+  <footer class="footer glass-card">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <a href="#" class="logo">
+          <svg class="logo-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <path d="M4 4L10 12L4 20H8L14 12L8 4H4Z" fill="#a855f7"/>
+            <path d="M12 4L18 12L12 20H16L22 12L16 4H12Z" fill="#6366f1"/>
+          </svg>
+          <span class="logo-text">NeuralFrame</span>
+        </a>
+        <p class="footer-tagline">AI-улучшение видео в вашем браузере.</p>
+      </div>
+      <div class="footer-links">
+        <a href="#features">Возможности</a>
+        <a href="#how-it-works">Как работает</a>
+        <a href="#demo">Попробовать</a>
+      </div>
+      <p class="footer-copy">&copy; 2026 NeuralFrame. Вся обработка происходит локально на вашем устройстве.</p>
+    </div>
+  </footer>
+
+  <!-- Hidden canvas for processing -->
+  <canvas id="processingCanvas" style="display:none"></canvas>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+  <script src="js/video-processor.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
