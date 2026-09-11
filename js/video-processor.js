@@ -253,6 +253,10 @@ class VideoProcessor {
           const totalFrames = Math.max(1, Math.ceil(duration * fps));
           let processed = 0;
           let lastDrawnTime = -Infinity;
+          let settled = false;
+          const stallTimeoutMs = 4000;
+          let stallBaseTime = performance.now();
+          let stallBaseCt = video.currentTime;
 
           // Draw, enhance, and notify for a single frame (sync)
           const drawFrame = () => {
@@ -264,9 +268,11 @@ class VideoProcessor {
             if (onProgress) onProgress(Math.min(100, (processed / totalFrames) * 100));
           };
 
-          // Stop recorder, then resolve or reject
+          // Stop recorder, then resolve or reject (settled guards double-settlement)
           const finish = (success) => {
             if (recorder.state === 'recording') recorder.stop();
+            if (settled) return;
+            settled = true;
             if (!success) {
               cleanup();
               reject(new DOMException('Обработка отменена', 'AbortError'));
@@ -275,42 +281,43 @@ class VideoProcessor {
             done.then(result => { cleanup(); resolve(result); });
           };
 
-          // Start real-time playback capture
-          video.play();
-
-          if (video.requestVideoFrameCallback) {
-            // Modern browsers: rVFC gives precise media-time timestamps
-            const tick = (_now, metadata) => {
-              if (this.aborted) { finish(false); return; }
-              const mediaTime = Math.min(metadata.mediaTime, duration);
-              if (mediaTime - lastDrawnTime >= 1000 / fps) {
-                drawFrame();
-                lastDrawnTime = mediaTime;
-              }
-              if (metadata.mediaTime >= duration || video.ended) {
-                finish(true);
-                return;
-              }
-              video.requestVideoFrameCallback(tick);
-            };
-            video.requestVideoFrameCallback(tick);
-          } else {
-            // Fallback: rAF + video.currentTime for throttled drawing
-            const tick = () => {
-              if (this.aborted) { finish(false); return; }
-              const ct = video.currentTime;
-              if (ct - lastDrawnTime >= 1000 / fps) {
-                drawFrame();
-                lastDrawnTime = ct;
-              }
-              if (video.ended || ct >= duration) {
-                finish(true);
-                return;
-              }
-              requestAnimationFrame(tick);
-            };
+          // Capture via rAF + video.currentTime. rVFC only fires once for a
+          // detached video element in Chromium, so this loop is the only timer.
+          const tick = () => {
+            if (settled) return;
+            if (this.aborted) { finish(false); return; }
+            const ct = video.currentTime;
+            if (ct - lastDrawnTime >= 1000 / fps) {
+              drawFrame();
+              lastDrawnTime = ct;
+            }
+            if (video.ended || ct >= duration - 0.05) {
+              finish(true);
+              return;
+            }
+            // Stall watchdog: playback itself must advance, not just the draw loop
+            const now = performance.now();
+            if (ct - stallBaseCt >= 0.05) {
+              stallBaseCt = ct;
+              stallBaseTime = now;
+            } else if (now - stallBaseTime > stallTimeoutMs) {
+              if (recorder.state === 'recording') recorder.stop();
+              cleanup();
+              reject(new Error('Видео не воспроизводится (возможно, проблема формата). Попробуйте другой файл.'));
+              return;
+            }
             requestAnimationFrame(tick);
-          }
+          };
+          requestAnimationFrame(tick);
+
+          // Autoplay can be blocked, which would stall the loop above
+          video.play().catch(() => {
+            if (settled) return;
+            settled = true;
+            if (recorder.state === 'recording') recorder.stop();
+            cleanup();
+            reject(new Error('Браузер заблокировал воспроизведение видео. Нажмите «Обработать видео» ещё раз.'));
+          });
 
         } catch (err) {
           cleanup();

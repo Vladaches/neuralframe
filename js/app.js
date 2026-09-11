@@ -244,12 +244,16 @@ document.addEventListener('DOMContentLoaded', () => {
           create: 'не удалось создать сессию ИИ',
           warmup: 'сбой компиляции шейдеров'
         };
-        nnStatus.textContent = 'ИИ-ускорение недоступно (' + (reasons[r.reason] || 'ошибка') + '). Используется обычный алгоритм.';
+        const detail = r.error ? String(r.error).slice(0, 140) : '';
+        nnStatus.textContent = 'ИИ-ускорение недоступно (' + (reasons[r.reason] || 'ошибка') + '). Используется обычный алгоритм.' + (detail ? ' (' + detail + ')' : '');
         nnStatus.classList.add('warn');
+        console.error('Neural init failed:', r.reason, r.error);
       }
     } catch (e) {
-      nnStatus.textContent = 'ИИ-ускорение недоступно (ошибка инициализации). Используется обычный алгоритм.';
+      const detail = String(e).slice(0, 140);
+      nnStatus.textContent = 'ИИ-ускорение недоступно (ошибка инициализации). Используется обычный алгоритм.' + (detail ? ' (' + detail + ')' : '');
       nnStatus.classList.add('warn');
+      console.error('Neural init error:', e);
     }
   }
 
