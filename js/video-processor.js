@@ -319,16 +319,22 @@ class VideoProcessor {
   }
 
   /* ===================== NEURAL PIPELINE ===================== */
+
+  _maxNeuralFrames(drawW, drawH, outW, outH) {
+    const NN_PIX = (drawW * 4) * (drawH * 4);
+    const workingBytes = NN_PIX * 16 + drawW * drawH * 16;
+    const blobBytes = outW * outH * 0.35;
+    const memGB = (navigator.deviceMemory && navigator.deviceMemory > 0) ? navigator.deviceMemory : 4;
+    const budget = memGB * 1073741824 * 0.55 - 67108864;
+    const available = Math.max(0, budget - workingBytes * 2);
+    const maxFrames = Math.max(60, Math.min(Math.floor(available / (blobBytes || 1)), 600));
+    console.info('[NeuralPipeline] Smart limit: ' + maxFrames + ' frames (~' + Math.round(maxFrames / 10) + ' s), deviceMemory=' + memGB + ' GiB, est. blobs ~' + Math.round(maxFrames * blobBytes / 1048576) + ' MB');
+    return maxFrames;
+  }
+
   async _runNeuralPipeline({ video, duration, drawW, drawH, enhancement, cleanup, resolve, reject, seekTo, onProgress, onFrame }) {
     const fps = 10;
     const totalFrames = Math.max(1, Math.ceil(duration * fps));
-
-    // Memory guard: max ~15s for neural mode
-    if (totalFrames > 150) {
-      cleanup();
-      reject(new Error('Слишком длинное видео для ИИ-режима (макс. ~15 сек). Уменьшите длительность или используйте обычный режим.'));
-      return;
-    }
 
     // Output dimensions: NN always produces 4×; upscale4 keeps it, upscale2 downscales
     const factor = 4;
@@ -336,6 +342,14 @@ class VideoProcessor {
     const nnH = drawH * factor;
     const outW = (enhancement === 'upscale2') ? drawW * 2 : nnW;
     const outH = (enhancement === 'upscale2') ? drawH * 2 : nnH;
+
+    // Memory guard: dynamic per-device limit
+    const maxFrames = this._maxNeuralFrames(drawW, drawH, outW, outH);
+    if (totalFrames > maxFrames) {
+      cleanup();
+      reject(new Error(`Слишком длинное видео для ИИ-режима (макс. ~${Math.round(maxFrames / 10)} сек). Уменьшите длительность или используйте обычный режим.`));
+      return;
+    }
 
     // Canvases
     const srcCanvas = document.createElement('canvas');
