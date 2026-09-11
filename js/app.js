@@ -2,38 +2,12 @@
    NeuralFrame — App Logic
    ============================================ */
 
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', () => {
 
   const processor = new VideoProcessor();
 
-  /* ===================== NEURAL NETWORK INIT ===================== */
+  /* ===================== UI ELEMENTS ===================== */
   const nnStatus = document.getElementById('nnStatus');
-  if (window.NeuralUpscaler) {
-    nnStatus.classList.remove('hidden');
-    nnStatus.textContent = 'Загрузка ИИ-модели...';
-    try {
-      const r = await NeuralUpscaler.init();
-      if (r.ok) {
-        processor.setNeuralSession(r.session);
-        nnStatus.textContent = 'ИИ-режим активен: апскейлинг 2x/4x через нейросеть (WebGPU)';
-        nnStatus.classList.add('ok');
-      } else {
-        const reasons = {
-          ort: 'библиотека ИИ не загрузилась',
-          webgpu: 'нужен Chrome/Edge с поддержкой WebGPU',
-          fetch: 'не удалось загрузить модель',
-          create: 'не удалось создать сессию ИИ'
-        };
-        nnStatus.textContent = 'ИИ-ускорение недоступно (' + (reasons[r.reason] || 'ошибка') + '). Используется обычный алгоритм.';
-        nnStatus.classList.add('warn');
-      }
-    } catch (e) {
-      nnStatus.textContent = 'ИИ-ускорение недоступно (ошибка инициализации). Используется обычный алгоритм.';
-      nnStatus.classList.add('warn');
-    }
-  } else {
-    nnStatus.classList.add('hidden');
-  }
 
   /* ===================== BURGER MENU ===================== */
   const burger = document.getElementById('burger');
@@ -171,7 +145,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           enhancedCanvas.height = frameCanvas.height;
           const ctx = enhancedCanvas.getContext('2d');
           ctx.drawImage(frameCanvas, 0, 0);
-        }
+        },
+        // onStatus (transient stage messages, e.g. first-frame shader compile)
+        (msg) => { progressText.textContent = msg; }
       );
 
       onComplete();
@@ -241,5 +217,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     el.style.transition = 'opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1)';
     observer.observe(el);
   });
+
+  /* ===================== NEURAL NETWORK INIT (non-blocking) ===================== */
+  // All UI handlers are attached synchronously above, so the model download +
+  // WebGPU shader compilation below never blocks the interface.
+  neuralInit();
+
+  async function neuralInit() {
+    if (!window.NeuralUpscaler) {
+      nnStatus.classList.add('hidden');
+      return;
+    }
+    nnStatus.classList.remove('hidden');
+    nnStatus.textContent = 'ИИ: загрузка модели и компиляция шейдеров WebGPU (первый запуск до ~1 мин)...';
+    try {
+      const r = await NeuralUpscaler.init();
+      if (r.ok) {
+        processor.setNeuralSession(r.session);
+        nnStatus.textContent = 'ИИ-режим активен: апскейлинг 2x/4x через нейросеть (WebGPU)';
+        nnStatus.classList.add('ok');
+      } else {
+        const reasons = {
+          ort: 'библиотека ИИ не загрузилась',
+          webgpu: 'нужен Chrome/Edge с поддержкой WebGPU',
+          fetch: 'не удалось загрузить модель',
+          create: 'не удалось создать сессию ИИ',
+          warmup: 'сбой компиляции шейдеров'
+        };
+        nnStatus.textContent = 'ИИ-ускорение недоступно (' + (reasons[r.reason] || 'ошибка') + '). Используется обычный алгоритм.';
+        nnStatus.classList.add('warn');
+      }
+    } catch (e) {
+      nnStatus.textContent = 'ИИ-ускорение недоступно (ошибка инициализации). Используется обычный алгоритм.';
+      nnStatus.classList.add('warn');
+    }
+  }
 
 });

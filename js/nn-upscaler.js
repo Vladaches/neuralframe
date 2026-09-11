@@ -17,6 +17,15 @@ class NeuralUpscaler {
       if (!res.ok) return { ok: false, reason: 'fetch' };
       const buf = await res.arrayBuffer();
       const session = await ort.InferenceSession.create(buf, { executionProviders: ['webgpu'] });
+
+      // Warmup: force WebGPU shader compilation + jsep.wasm download now, not at first video frame
+      try {
+        const warm = new ort.Tensor('float32', new Float32Array(3 * 32 * 32), [1, 3, 32, 32]);
+        await session.run({ [session.inputNames[0]]: warm });
+      } catch (e) {
+        return { ok: false, reason: 'warmup', error: String(e) };
+      }
+
       return { ok: true, session };
     } catch (e) { return { ok: false, reason: 'create', error: String(e) }; }
   }

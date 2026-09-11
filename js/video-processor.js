@@ -130,7 +130,7 @@ class VideoProcessor {
   }
 
   /* ===================== VIDEO PROCESSING ===================== */
-  async processVideo(videoFile, enhancement, onProgress, onFrame) {
+  async processVideo(videoFile, enhancement, onProgress, onFrame, onStatus) {
     this.isProcessing = true;
     this.aborted = false;
 
@@ -152,6 +152,10 @@ class VideoProcessor {
 
       // Seek helper with 10s timeout (shared between neural and canvas paths)
       const seekTo = (targetTime) => new Promise((res, rej) => {
+        if (Math.abs((video.currentTime || 0) - targetTime) < 0.001) {
+          res();
+          return;
+        }
         let timer = null;
         const onSeeked = () => {
           clearTimeout(timer);
@@ -200,7 +204,7 @@ class VideoProcessor {
             this._runNeuralPipeline({
               video, duration, drawW, drawH, enhancement,
               srcW, srcH, cleanup, resolve, reject, seekTo,
-              onProgress, onFrame
+              onProgress, onFrame, onStatus
             });
             return;
           }
@@ -332,7 +336,7 @@ class VideoProcessor {
     return maxFrames;
   }
 
-  async _runNeuralPipeline({ video, duration, drawW, drawH, enhancement, cleanup, resolve, reject, seekTo, onProgress, onFrame }) {
+  async _runNeuralPipeline({ video, duration, drawW, drawH, enhancement, cleanup, resolve, reject, seekTo, onProgress, onFrame, onStatus = () => {} }) {
     const fps = 10;
     const totalFrames = Math.max(1, Math.ceil(duration * fps));
 
@@ -395,7 +399,21 @@ class VideoProcessor {
 
         srcCtx.drawImage(video, 0, 0, drawW, drawH);
         const srcImg = srcCtx.getImageData(0, 0, drawW, drawH);
-        const hiRes = await NeuralUpscaler.run(this.nnSession, srcImg); // 4× RGBA
+
+        // First frame: shader compile is normally handled by the warmup in init(),
+        // but a 60 s budget still protects against a WebGPU stall; later frames get 20 s.
+        if (frame === 0 && onStatus) onStatus('ИИ: подготовка первого кадра (компиляция шейдеров WebGPU)...');
+
+        const runStart = performance.now();
+        const frameBudgetMs = (frame === 0) ? 60000 : 20000;
+        const hiRes = await Promise.race([
+          NeuralUpscaler.run(this.nnSession, srcImg), // 4× RGBA
+          new Promise((_, rej) => setTimeout(() => rej(new Error(
+            'ИИ-обработка не отвечает (возможно, проблема с WebGPU в вашем браузере). Попробуйте ещё раз или используйте обычный режим.'
+          )), frameBudgetMs))
+        ]);
+        const ms = performance.now() - runStart;
+        if (ms > 5000) console.warn('[NeuralPipeline] Frame ' + frame + ' took ' + ms + ' ms');
 
         if (enhancement === 'upscale2') {
           // put hiRes (4×) onto tmp canvas, then downscale to 2× outCanvas
