@@ -139,8 +139,13 @@ class VideoProcessor {
       video.preload = 'auto';
       video.muted = true;
       video.playsInline = true;
+      // Attach offscreen so Chromium decodes frames eagerly; a detached element
+      // stays unready and drawImage would produce a black frame.
+      video.style.cssText = 'position:fixed;left:-9999px;top:0;width:640px;height:auto;opacity:0;pointer-events:none;';
+      document.body.appendChild(video);
 
       const cleanup = () => {
+        video.remove();
         URL.revokeObjectURL(video.src);
         this.isProcessing = false;
       };
@@ -170,8 +175,22 @@ class VideoProcessor {
         video.currentTime = targetTime;
       });
 
-      video.onloadedmetadata = () => {
+      video.onloadedmetadata = async () => {
         try {
+          // Wait until the element actually has a decodable frame; drawing before
+          // HAVE_CURRENT_DATA yields a black frame that poisons the whole output.
+          const waitForReady = () => new Promise((res, rej) => {
+            if (video.readyState >= 2) { res(); return; }   // HAVE_CURRENT_DATA
+            const onReady = () => { clearTimeout(timer); res(); };
+            const timer = setTimeout(() => {
+              video.removeEventListener('loadeddata', onReady);
+              rej(new Error('Не удалось декодировать первый кадр видео'));
+            }, 15000);
+            video.addEventListener('loadeddata', onReady, { once: true });
+          });
+
+          await waitForReady();
+
           const duration = video.duration;
           const srcW = video.videoWidth;
           const srcH = video.videoHeight;
@@ -320,6 +339,7 @@ class VideoProcessor {
           });
 
         } catch (err) {
+          console.error('[CanvasPipeline] run error:', err);
           cleanup();
           reject(err);
         }
@@ -383,6 +403,7 @@ class VideoProcessor {
 
     // Cleanup helper
     const neuralCleanup = () => {
+      video.remove();
       URL.revokeObjectURL(video.src);
       this.isProcessing = false;
     };
@@ -404,11 +425,15 @@ class VideoProcessor {
         const time = frame / fps;
         await seekTo(time);
 
+        // Guard against a black frame: if the frame did not decode, force a real
+        // seek so the draw below always has pixel data.
+        if (video.readyState < 2) await seekTo(Math.max(time, 0.05));
+
         srcCtx.drawImage(video, 0, 0, drawW, drawH);
         const srcImg = srcCtx.getImageData(0, 0, drawW, drawH);
 
-        // First frame: shader compile is normally handled by the warmup in init(),
-        // but a 60 s budget still protects against a WebGPU stall; later frames get 20 s.
+        // The first real frame compiles the WebGPU shaders, so it gets a 60 s budget;
+        // later frames get 20 s.
         if (frame === 0 && onStatus) onStatus('ИИ: подготовка первого кадра (компиляция шейдеров WebGPU)...');
 
         const runStart = performance.now();
@@ -418,7 +443,10 @@ class VideoProcessor {
           new Promise((_, rej) => setTimeout(() => rej(new Error(
             'ИИ-обработка не отвечает (возможно, проблема с WebGPU в вашем браузере). Попробуйте ещё раз или используйте обычный режим.'
           )), frameBudgetMs))
-        ]);
+        ]).catch((err) => {
+          console.error('[NeuralPipeline] run error:', err);
+          throw err;
+        });
         const ms = performance.now() - runStart;
         if (ms > 5000) console.warn('[NeuralPipeline] Frame ' + frame + ' took ' + ms + ' ms');
 
@@ -450,6 +478,7 @@ class VideoProcessor {
       console.info(`[NeuralPipeline] Pass 1 done. ${frames.length} frames, ~${(totalBlobBytes / 1048576).toFixed(1)} MB in blobs.`);
 
     } catch (err) {
+      console.error('[NeuralPipeline] run error:', err);
       neuralCleanup();
       reject(err);
       return;
@@ -511,6 +540,7 @@ class VideoProcessor {
       resolve(result);
 
     } catch (err) {
+      console.error('[NeuralPipeline] run error:', err);
       if (recorder.state === 'recording') recorder.stop();
       neuralCleanup();
       reject(err);

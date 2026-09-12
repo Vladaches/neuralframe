@@ -241,8 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
           ort: 'библиотека ИИ не загрузилась',
           webgpu: 'нужен Chrome/Edge с поддержкой WebGPU',
           fetch: 'не удалось загрузить модель',
-          create: 'не удалось создать сессию ИИ',
-          warmup: 'сбой компиляции шейдеров'
+          create: 'не удалось создать сессию ИИ'
         };
         const detail = r.error ? String(r.error).slice(0, 140) : '';
         nnStatus.textContent = 'ИИ-ускорение недоступно (' + (reasons[r.reason] || 'ошибка') + '). Используется обычный алгоритм.' + (detail ? ' (' + detail + ')' : '');
